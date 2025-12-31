@@ -1,36 +1,60 @@
+"use client"
+
 import Link from "next/link"
-import { Instagram } from "lucide-react"
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border/40 bg-background">
-      <div className="container py-12">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-          {/* Links */}
-          <nav className="flex flex-wrap gap-x-8 gap-y-4 text-sm text-muted-foreground">
-            <Link href="/about" className="hover:text-foreground transition-colors">
-              About
-            </Link>
-            <Link href="/contact" className="hover:text-foreground transition-colors">
-              Contact
-            </Link>
-            <Link href="/shipping" className="hover:text-foreground transition-colors">
-              Shipping & Returns
-            </Link>
-            <Link
-              href="https://instagram.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors flex items-center gap-2"
-            >
-              <Instagram className="h-4 w-4" />
-              Instagram
-            </Link>
-          </nav>
+    <footer className="bg-[#050505] pt-32 pb-12 px-6 md:px-12 border-t border-white/5 relative overflow-hidden">
+      {/* Huge Background Text */}
+      <h1 className="text-[20vw] font-serif font-bold text-[#0a0a0a] absolute bottom-0 left-1/2 -translate-x-1/2 pointer-events-none leading-none">
+        NOIR
+      </h1>
 
-          {/* Copyright */}
-          <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} ATELIER. All rights reserved.</p>
+      {/* Content */}
+      <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-12 mb-24">
+        {/* Newsletter */}
+        <div>
+          <h4 className="text-3xl font-serif mb-8">Join the Cult.</h4>
+          <div className="flex border-b border-white/20 pb-4 max-w-md">
+            <input
+              type="email"
+              placeholder="ENTER EMAIL"
+              className="bg-transparent w-full outline-none text-white placeholder-gray-600 uppercase tracking-widest text-sm"
+            />
+            <button className="text-xs uppercase hover:text-gray-400 transition-colors">
+              Submit
+            </button>
+          </div>
         </div>
+
+        {/* Links */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 text-xs uppercase tracking-widest text-gray-500">
+          <ul className="space-y-3">
+            <li className="text-white mb-4">Shop</li>
+            <li><Link href="/shop">New Arrivals</Link></li>
+            <li><Link href="/shop">Best Sellers</Link></li>
+            <li><Link href="/archive">Archive</Link></li>
+          </ul>
+
+          <ul className="space-y-3">
+            <li className="text-white mb-4">Studio</li>
+            <li><Link href="/about">About</Link></li>
+            <li><Link href="/stores">Stores</Link></li>
+            <li><Link href="/contact">Contact</Link></li>
+          </ul>
+
+          <ul className="space-y-3">
+            <li className="text-white mb-4">Social</li>
+            <li><a href="#">Instagram</a></li>
+            <li><a href="#">TikTok</a></li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Bottom Bar */}
+      <div className="relative z-10 flex justify-between text-[10px] uppercase tracking-widest text-gray-700">
+        <span>&copy; 2025 NOIR Maison</span>
+        <span>Privacy & Cookies</span>
       </div>
     </footer>
   )
