@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout - U.S ATELIER{% endblock %}
+
+{% block content %}
+    <div class="cart-container" style="max-width: 900px;">
+        <h1 style="font-size: 2rem; margin-bottom: 2rem; font-weight: 400;">Checkout</h1>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;">
+            <div>
+                <h2 style="font-size: 1.2rem; margin-bottom: 1.5rem;">Shipping Address</h2>
+
+                <form id="checkout-form" onsubmit="handleCheckout(event)">
+                    <div class="form-group">
+                        <label for="name">Full Name</label>
+                        <input type="text" id="name" name="name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="street">Street Address</label>
+                        <input type="text" id="street" name="street" required>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="city">City</label>
+                            <input type="text" id="city" name="city" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="state">State</label>
+                            <input type="text" id="state" name="state" required>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="zip">ZIP Code</label>
+                            <input type="text" id="zip" name="zip" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="country">Country</label>
+                            <input type="text" id="country" name="country" required value="USA">
+                        </div>
+                    </div>
+
+                    <h2 style="font-size: 1.2rem; margin: 2rem 0 1.5rem;">Payment Information</h2>
+
+                    <div class="form-group">
+                        <label for="card-name">Cardholder Name</label>
+                        <input type="text" id="card-name" name="card-name" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="card-number">Card Number</label>
+                        <input type="text" id="card-number" name="card-number" placeholder="1234 5678 9012 3456" required>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="expiry">Expiry (MM/YY)</label>
+                            <input type="text" id="expiry" name="expiry" placeholder="12/25" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="cvc">CVC</label>
+                            <input type="text" id="cvc" name="cvc" placeholder="123" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn" style="width: 100%; padding: 1rem; margin-top: 2rem; font-weight: 600;">
+                        Complete Purchase
+                    </button>
+                </form>
+            </div>
+
+            <div>
+                <h2 style="font-size: 1.2rem; margin-bottom: 1.5rem;">Order Summary</h2>
+
+                <div class="cart-summary">
+                    <div id="checkout-items">
+                        <!-- Items loaded by JavaScript -->
+                    </div>
+
+                    <div class="summary-row" style="margin-top: 2rem;">
+                        <span>Subtotal</span>
+                        <span id="subtotal">$0</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Shipping</span>
+                        <span>$15.00</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>Total</span>
+                        <span id="total">$0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadCheckoutSummary() {
+        const items = CartModule.items;
+        const itemsContainer = document.getElementById('checkout-items');
+
+        if (items.length === 0) {
+            itemsContainer.innerHTML = '<p>Your cart is empty</p>';
+            return;
+        }
+
+        itemsContainer.innerHTML = items.map(item => `
+            <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color);">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <span>${item.name}</span>
+                    <span>$${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--accent-gray);">
+                    Size: ${item.size} × ${item.quantity}
+                </div>
+            </div>
+        `).join('');
+
+        updateTotals();
+    }
+
+    function updateTotals() {
+        const subtotal = CartModule.getTotal();
+        const total = subtotal + 15;
+
+        document.getElementById('subtotal').textContent = `$${subtotal.toFixed(2)}`;
+        document.getElementById('total').textContent = `$${total.toFixed(2)}`;
+    }
+
+    async function handleCheckout(event) {
+        event.preventDefault();
+
+        if (CartModule.items.length === 0) {
+            alert('Your cart is empty');
+            return;
+        }
+
+        const order = {
+            items: CartModule.items,
+            total: CartModule.getTotal() + 15,
+            shippingAddress: {
+                name: document.getElementById('name').value,
+                street: document.getElementById('street').value,
+                city: document.getElementById('city').value,
+                state: document.getElementById('state').value,
+                zip: document.getElementById('zip').value,
+                country: document.getElementById('country').value,
+            }
+        };
+
+        try {
+            const res = await fetch('/api/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(order)
+            });
+
+            if (res.status === 401) {
+                alert('Please login to complete your purchase');
+                window.location.href = '/login';
+                return;
+            }
+
+            const data = await res.json();
+            await CartModule.clearCart();
+            window.location.href = `/checkout/confirmation?order=${data.id}`;
+        } catch (error) {
+            console.log("[v0] Error creating order:", error);
+            alert('Error processing order');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        CartModule.loadCart().then(() => {
+            loadCheckoutSummary();
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Product - U.S ATELIER{% endblock %}
+
+{% block content %}
+    <div class="product-detail" id="product-container">
+        <!-- Loaded by JavaScript -->
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const productId = new URLSearchParams(window.location.search).get('id') || '{{ product_id }}';
+
+    async function loadProduct() {
+        try {
+            const res = await fetch(`/api/products/${productId}`);
+            const product = await res.json();
+
+            if (product.error) {
+                document.getElementById('product-container').innerHTML = '<p>Product not found</p>';
+                return;
+            }
+
+            let selectedSize = '';
+
+            const html = `
+                <div class="product-detail-image">
+                    <img src="/static/images/${product.images?.[0] || 'placeholder.svg'}" 
+                         alt="${product.name}"
+                         onerror="this.src='/static/images/placeholder.svg'">
+                </div>
+
+                <div class="product-detail-info">
+                    <h1>${product.name}</h1>
+                    <div class="product-detail-price">$${product.price}</div>
+                    
+                    <p class="product-detail-description">
+                        ${product.description}
+                    </p>
+
+                    <div class="size-selector">
+                        <label>Select Size:</label>
+                        <div class="size-options">
+                            ${product.sizes.map(size => `
+                                <button class="size-option" onclick="document.querySelectorAll('.size-option').forEach(s => s.classList.remove('selected')); this.classList.add('selected'); selectedSize = '${size}';">
+                                    ${size}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div class="quantity-selector">
+                        <label style="margin-right: 0.5rem;">Quantity:</label>
+                        <button class="quantity-btn" onclick="updateQuantity(-1)">-</button>
+                        <input type="number" id="quantity-input" class="quantity-input" value="1" min="1">
+                        <button class="quantity-btn" onclick="updateQuantity(1)">+</button>
+                    </div>
+
+                    <button class="btn" style="width: 100%; font-weight: 600;" onclick="addProductToCart()">
+                        Add to Cart
+                    </button>
+
+                    ${product.fabric ? `<p style="margin-top: 2rem; font-size: 0.9rem; color: var(--accent-gray);"><strong>Fabric:</strong> ${product.fabric}</p>` : ''}
+                    ${product.care ? `<p style="font-size: 0.9rem; color: var(--accent-gray);"><strong>Care:</strong> ${product.care}</p>` : ''}
+                </div>
+            `;
+
+            document.getElementById('product-container').innerHTML = html;
+        } catch (error) {
+            console.log("[v0] Error loading product:", error);
+        }
+    }
+
+    function updateQuantity(change) {
+        const input = document.getElementById('quantity-input');
+        const newValue = parseInt(input.value) + change;
+        if (newValue > 0) {
+            input.value = newValue;
+        }
+    }
+
+    async function addProductToCart() {
+        const res = await fetch(`/api/products/${productId}`);
+        const product = await res.json();
+
+        const sizeOption = document.querySelector('.size-option.selected');
+        if (!sizeOption) {
+            alert('Please select a size');
+            return;
+        }
+
+        const quantity = parseInt(document.getElementById('quantity-input').value);
+
+        const cartItem = {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            size: sizeOption.textContent,
+            quantity: quantity,
+            image: product.images?.[0] || 'placeholder.svg'
+        };
+
+        const result = await CartModule.addToCart(cartItem);
+        if (result.success) {
+            alert('Added to cart!');
+            document.getElementById('quantity-input').value = 1;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadProduct);
+</script>
+{% endblock %}

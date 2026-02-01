@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}Admin - U.S ATELIER{% endblock %}
+
+{% block content %}
+    <div class="cart-container" style="max-width: 1200px;">
+        <h1 style="font-size: 2rem; margin-bottom: 2rem; font-weight: 400;">Admin Dashboard</h1>
+
+        <div id="admin-access-denied" style="text-align: center; padding: 2rem; display: none;">
+            <p>You don't have permission to access the admin panel</p>
+            <a href="/" class="btn">Go Home</a>
+        </div>
+
+        <div id="admin-content" style="display: none;">
+            <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+                <button onclick="showTab('orders')" class="btn" id="orders-tab">Orders</button>
+                <button onclick="showTab('products')" class="btn" id="products-tab">Products</button>
+            </div>
+
+            <div id="orders-section" class="admin-section">
+                <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Orders</h2>
+                <div id="orders-table">
+                    <!-- Orders loaded by JavaScript -->
+                </div>
+            </div>
+
+            <div id="products-section" class="admin-section" style="display: none;">
+                <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Products</h2>
+                <button onclick="toggleProductForm()" class="btn" style="margin-bottom: 1rem;">Add New Product</button>
+
+                <div id="product-form" style="display: none; border: 1px solid var(--border-color); padding: 1.5rem; margin-bottom: 2rem;">
+                    <h3 style="margin-bottom: 1rem;">Add Product</h3>
+                    <!-- Product form fields would go here -->
+                    <p style="color: var(--accent-gray);">Product management feature coming soon</p>
+                </div>
+
+                <div id="products-list">
+                    <!-- Products loaded by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadAdmin() {
+        try {
+            const userRes = await fetch('/api/auth/user');
+            const userData = await userRes.json();
+
+            if (!userData.user || userData.user !== 'admin@example.com') {
+                document.getElementById('admin-access-denied').style.display = 'block';
+                document.getElementById('admin-content').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('admin-access-denied').style.display = 'none';
+            document.getElementById('admin-content').style.display = 'block';
+
+            loadOrders();
+            loadProducts();
+        } catch (error) {
+            console.log("[v0] Error loading admin:", error);
+        }
+    }
+
+    async function loadOrders() {
+        try {
+            const res = await fetch('/api/admin/orders');
+            const orders = await res.json();
+
+            const table = document.getElementById('orders-table');
+            table.innerHTML = '<table style="width: 100%; border-collapse: collapse;">' +
+                '<thead><tr style="border-bottom: 1px solid var(--border-color);">' +
+                '<th style="text-align: left; padding: 0.75rem;">Order ID</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Customer</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Date</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Status</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Total</th>' +
+                '</tr></thead>' +
+                '<tbody>' +
+                orders.map(order => `
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.75rem;">${order.id}</td>
+                        <td style="padding: 0.75rem;">${order.customerEmail}</td>
+                        <td style="padding: 0.75rem;">${new Date(order.date).toLocaleDateString()}</td>
+                        <td style="padding: 0.75rem;">${order.status}</td>
+                        <td style="padding: 0.75rem;">$${order.total}</td>
+                    </tr>
+                `).join('') +
+                '</tbody></table>';
+        } catch (error) {
+            console.log("[v0] Error loading orders:", error);
+        }
+    }
+
+    async function loadProducts() {
+        try {
+            const res = await fetch('/api/admin/products');
+            const products = await res.json();
+
+            const list = document.getElementById('products-list');
+            list.innerHTML = '<table style="width: 100%; border-collapse: collapse;">' +
+                '<thead><tr style="border-bottom: 1px solid var(--border-color);">' +
+                '<th style="text-align: left; padding: 0.75rem;">Product</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Category</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Price</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Stock</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Actions</th>' +
+                '</tr></thead>' +
+                '<tbody>' +
+                products.map(product => `
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.75rem;">${product.name}</td>
+                        <td style="padding: 0.75rem;">${product.category}</td>
+                        <td style="padding: 0.75rem;">$${product.price}</td>
+                        <td style="padding: 0.75rem;">${product.inStock ? 'In Stock' : 'Out of Stock'}</td>
+                        <td style="padding: 0.75rem;">
+                            <button onclick="editProduct('${product.id}')" style="background: none; border: none; color: var(--primary-light); cursor: pointer; text-decoration: underline; margin-right: 1rem;">Edit</button>
+                            <button onclick="deleteProduct('${product.id}')" style="background: none; border: none; color: #ff6b6b; cursor: pointer; text-decoration: underline;">Delete</button>
+                        </td>
+                    </tr>
+                `).join('') +
+                '</tbody></table>';
+        } catch (error) {
+            console.log("[v0] Error loading products:", error);
+        }
+    }
+
+    function showTab(tab) {
+        const ordersSection = document.getElementById('orders-section');
+        const productsSection = document.getElementById('products-section');
+        const ordersTab = document.getElementById('orders-tab');
+        const productsTab = document.getElementById('products-tab');
+
+        if (tab === 'orders') {
+            ordersSection.style.display = 'block';
+            productsSection.style.display = 'none';
+            ordersTab.style.borderBottom = '2px solid var(--primary-light)';
+            productsTab.style.borderBottom = 'none';
+        } else {
+            ordersSection.style.display = 'none';
+            productsSection.style.display = 'block';
+            ordersTab.style.borderBottom = 'none';
+            productsTab.style.borderBottom = '2px solid var(--primary-light)';
+        }
+    }
+
+    function toggleProductForm() {
+        const form = document.getElementById('product-form');
+        form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function editProduct(productId) {
+        console.log("[v0] Edit product:", productId);
+    }
+
+    async function deleteProduct(productId) {
+        if (!confirm('Are you sure you want to delete this product?')) return;
+
+        try {
+            await fetch(`/api/admin/products/${productId}`, { method: 'DELETE' });
+            loadProducts();
+        } catch (error) {
+            console.log("[v0] Error deleting product:", error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAdmin);
+</script>
+{% endblock %}
