@@ -1,10 +1,12 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.exceptions import BadRequest
 from functools import wraps
 import json
 import re
+import uuid
+import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
@@ -32,7 +34,7 @@ def set_security_headers(response):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://checkout.razorpay.com https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://oauth2.googleapis.com https://www.googleapis.com https://accounts.google.com"
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     return response
 
@@ -63,6 +65,13 @@ def validate_product_data(data):
         return False, "Invalid price format"
     
     return True, "Valid"
+
+# ==================== GOOGLE OAUTH CONFIG ====================
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/api/auth/google/callback')
+
+GOOGLE_OAUTH_CONFIGURED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 
 # ==================== RAZORPAY CONFIG ====================
 RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
@@ -265,6 +274,123 @@ def get_user():
     if 'user' in session:
         return jsonify({"user": session['user']}), 200
     return jsonify({"user": None}), 200
+
+# ==================== GOOGLE OAUTH ====================
+@app.route('/api/auth/google/config', methods=['GET'])
+def google_config():
+    """Get Google OAuth configuration status"""
+    if not GOOGLE_OAUTH_CONFIGURED:
+        return jsonify({"configured": False}), 200
+    
+    return jsonify({
+        "configured": True,
+        "clientId": GOOGLE_CLIENT_ID
+    }), 200
+
+@app.route('/api/auth/google/login', methods=['POST'])
+def google_login():
+    """Initiate Google OAuth flow"""
+    if not GOOGLE_OAUTH_CONFIGURED:
+        return jsonify({"error": "Google OAuth not configured"}), 400
+    
+    try:
+        state = str(uuid.uuid4())
+        session['oauth_state'] = state
+        
+        auth_url = (
+            f"https://accounts.google.com/o/oauth2/v2/auth?"
+            f"client_id={GOOGLE_CLIENT_ID}&"
+            f"redirect_uri={GOOGLE_REDIRECT_URI}&"
+            f"response_type=code&"
+            f"scope=openid%20email%20profile&"
+            f"state={state}"
+        )
+        
+        return jsonify({"auth_url": auth_url}), 200
+    except Exception as e:
+        app.logger.error(f"Google login error: {str(e)}")
+        return jsonify({"error": "Failed to initiate OAuth"}), 500
+
+@app.route('/api/auth/google/callback', methods=['GET'])
+def google_callback():
+    """Handle Google OAuth callback"""
+    try:
+        code = request.args.get('code')
+        state = request.args.get('state')
+        
+        if not code or not state:
+            return redirect('/login?error=invalid_request')
+        
+        if state != session.get('oauth_state'):
+            return redirect('/login?error=invalid_state')
+        
+        if not GOOGLE_OAUTH_CONFIGURED:
+            return redirect('/login?error=oauth_not_configured')
+        
+        # Exchange code for token
+        token_url = 'https://oauth2.googleapis.com/token'
+        token_data = {
+            'code': code,
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'redirect_uri': GOOGLE_REDIRECT_URI,
+            'grant_type': 'authorization_code'
+        }
+        
+        token_response = requests.post(token_url, json=token_data)
+        if token_response.status_code != 200:
+            return redirect('/login?error=token_exchange_failed')
+        
+        tokens = token_response.json()
+        access_token = tokens.get('access_token')
+        
+        # Get user info
+        userinfo_url = 'https://www.googleapis.com/oauth2/v1/userinfo'
+        userinfo_response = requests.get(
+            userinfo_url,
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        
+        if userinfo_response.status_code != 200:
+            return redirect('/login?error=userinfo_failed')
+        
+        userinfo = userinfo_response.json()
+        email = userinfo.get('email', '').lower()
+        name = userinfo.get('name', '')
+        
+        if not email:
+            return redirect('/login?error=no_email')
+        
+        # Create or update user
+        user_exists = any(u['email'].lower() == email for u in mock_users.values() if isinstance(u, dict))
+        
+        if not user_exists:
+            # Create new user with random password (they won't need it for Google login)
+            random_password = str(uuid.uuid4())
+            mock_users[email] = {
+                'email': email,
+                'password': generate_password_hash(random_password),
+                'name': name,
+                'oauth_provider': 'google',
+                'created_at': datetime.now().isoformat()
+            }
+        
+        session['user'] = email
+        session.permanent = True
+        
+        return redirect('/account?login_success=true')
+    
+    except Exception as e:
+        app.logger.error(f"Google callback error: {str(e)}")
+        return redirect('/login?error=callback_error')
+
+@app.route('/api/auth/google/status', methods=['GET'])
+def google_status():
+    """Check Google OAuth status"""
+    return jsonify({
+        "configured": GOOGLE_OAUTH_CONFIGURED,
+        "client_id": GOOGLE_CLIENT_ID if GOOGLE_OAUTH_CONFIGURED else None
+    }), 200
 
 # ==================== PRODUCTS ====================
 @app.route('/api/products', methods=['GET'])

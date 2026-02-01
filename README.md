@@ -28,6 +28,21 @@ This is a complete conversion of the Next.js/React ecommerce application to vani
 │   └── admin.html        # Admin dashboard
 ```
 
+## Quick Start (5 Minutes)
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Setup environment variables
+cp .env.example .env
+
+# 3. Run the app
+python app.py
+
+# 4. Visit http://localhost:5000
+```
+
 ## Setup Instructions
 
 ### 1. Install Python Dependencies
@@ -49,27 +64,49 @@ SECRET_KEY=your-secret-key-here
 FLASK_ENV=development
 FLASK_DEBUG=True
 
-# Optional: Add Razorpay credentials for payment processing
+# Google OAuth (Optional - for social login)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:5000/api/auth/google/callback
+
+# Razorpay Payment Gateway (Optional - for payment processing)
 RAZORPAY_KEY_ID=your-razorpay-key-id
 RAZORPAY_KEY_SECRET=your-razorpay-key-secret
 ```
 
-#### Getting Razorpay Credentials
+### 3. Setup Google OAuth (Optional)
+
+For seamless social login with Google:
+
+1. Follow the [Google OAuth Setup Guide](./GOOGLE_OAUTH_SETUP.md)
+2. Add your Google credentials to `.env`
+3. Users can now login with "Continue with Google"
+
+**Note**: Without Google credentials, the Google login button won't appear. Standard email/password login always works.
+
+### 4. Setup Razorpay (Optional)
+
+For payment processing:
 
 1. Sign up at [Razorpay Dashboard](https://dashboard.razorpay.com)
 2. Go to Settings → API Keys
 3. Copy your Key ID and Key Secret
-4. Paste them in your `.env` file
+4. Add them to `.env`
 
-**Note**: Payments will work seamlessly once credentials are added. Without them, the app shows a message and can complete orders without payment processing.
+**Note**: Payments work seamlessly once credentials are added. Without them, orders can still be created for manual payment follow-up.
 
-### 3. Run the Application
+### 5. Run the Application
 
 ```bash
 python app.py
 ```
 
 The application will be available at `http://localhost:5000`
+
+**Demo Credentials** (for testing):
+- Email: `user@example.com`
+- Password: `password123`
+- Admin: `admin@example.com` / `password123`
 
 ## Features
 
@@ -85,7 +122,10 @@ The application will be available at `http://localhost:5000`
 ### Backend (Flask)
 
 - **RESTful API**: Complete API for products, cart, orders, and admin functions
-- **Session-based Auth**: User authentication with password hashing
+- **Multi-Auth Support**: 
+  - Traditional email/password authentication
+  - Google OAuth 2.0 for one-click sign-in
+- **Session Management**: Secure, HTTP-only cookies with 24-hour timeout
 - **Cart Management**: Server-side session-based cart system
 - **Order Processing**: Create and manage orders with payment tracking
 - **Admin Dashboard**: Full CRUD operations for products and orders
@@ -100,10 +140,14 @@ The application will be available at `http://localhost:5000`
 ## API Endpoints
 
 ### Authentication
-- `POST /api/auth/login` - User login
+- `POST /api/auth/login` - User login with email/password
 - `POST /api/auth/signup` - User registration
 - `POST /api/auth/logout` - User logout
 - `GET /api/auth/user` - Get current user
+- `POST /api/auth/google/login` - Initiate Google OAuth flow
+- `GET /api/auth/google/callback` - Google OAuth callback (automatic)
+- `GET /api/auth/google/config` - Check if Google OAuth is configured
+- `GET /api/auth/google/status` - Get Google OAuth status
 
 ### Products
 - `GET /api/products` - Get all products
