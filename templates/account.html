@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Account - U.S ATELIER{% endblock %}
+
+{% block content %}
+    <div class="cart-container" style="max-width: 1000px;">
+        <h1 style="font-size: 2rem; margin-bottom: 2rem; font-weight: 400;">My Account</h1>
+
+        <div id="auth-check" style="text-align: center; padding: 2rem;">
+            <p>Please login to view your account</p>
+            <a href="/login" class="btn">Login</a>
+        </div>
+
+        <div id="account-content" style="display: none;">
+            <div style="margin-bottom: 3rem;">
+                <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Your Orders</h2>
+                <div id="orders-list">
+                    <!-- Orders loaded by JavaScript -->
+                </div>
+            </div>
+
+            <div style="margin-bottom: 3rem;">
+                <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Account Settings</h2>
+                <button onclick="AuthModule.logout().then(() => window.location.href = '/')" class="btn">
+                    Logout
+                </button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadAccount() {
+        try {
+            const userRes = await fetch('/api/auth/user');
+            const userData = await userRes.json();
+
+            if (!userData.user) {
+                document.getElementById('auth-check').style.display = 'block';
+                document.getElementById('account-content').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('auth-check').style.display = 'none';
+            document.getElementById('account-content').style.display = 'block';
+
+            const ordersRes = await fetch('/api/orders');
+            const orders = await ordersRes.json();
+
+            const ordersList = document.getElementById('orders-list');
+            if (orders.length === 0) {
+                ordersList.innerHTML = '<p>You have no orders yet</p>';
+                return;
+            }
+
+            ordersList.innerHTML = orders.map(order => `
+                <div style="border: 1px solid var(--border-color); padding: 1.5rem; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                        <div>
+                            <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Order ${order.id}</h3>
+                            <p style="font-size: 0.9rem; color: var(--accent-gray);">${new Date(order.date).toLocaleDateString()}</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <p style="font-weight: 600; margin-bottom: 0.5rem;">$${order.total}</p>
+                            <p style="font-size: 0.85rem; color: var(--accent-gray);">Status: ${order.status}</p>
+                        </div>
+                    </div>
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                        ${order.items.map(item => `
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                                <span>${item.productName} (${item.size}) × ${item.quantity}</span>
+                                <span>$${(item.price * item.quantity).toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.log("[v0] Error loading account:", error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadAccount);
+</script>
+{% endblock %}

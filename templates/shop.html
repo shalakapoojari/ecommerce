@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Shop - U.S ATELIER{% endblock %}
+
+{% block content %}
+    <div class="products-section">
+        <div class="products-header">
+            <h2>Shop</h2>
+            <p>Discover our complete collection</p>
+        </div>
+
+        <div style="margin-bottom: 2rem;">
+            <label style="margin-right: 1rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                Filter by category:
+            </label>
+            <select id="category-filter" style="padding: 0.5rem; background-color: var(--hover-dark); color: var(--primary-light); border: 1px solid var(--border-color);">
+                <option value="">All Categories</option>
+                <option value="Knitwear">Knitwear</option>
+                <option value="Trousers">Trousers</option>
+                <option value="Shirts">Shirts</option>
+                <option value="Basics">Basics</option>
+                <option value="Accessories">Accessories</option>
+            </select>
+        </div>
+
+        <div class="products-grid" id="products-grid">
+            <!-- Products loaded by JavaScript -->
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let allProducts = [];
+
+    async function loadProducts() {
+        try {
+            const res = await fetch('/api/products');
+            allProducts = await res.json();
+            displayProducts(allProducts);
+        } catch (error) {
+            console.log("[v0] Error loading products:", error);
+        }
+    }
+
+    function displayProducts(products) {
+        const grid = document.getElementById('products-grid');
+        grid.innerHTML = products.map(product => `
+            <div class="product-card" onclick="window.location.href='/product/${product.id}'">
+                <div class="product-image">
+                    <img src="/static/images/${product.images?.[0] || 'placeholder.svg'}" 
+                         alt="${product.name}"
+                         onerror="this.src='/static/images/placeholder.svg'">
+                </div>
+                <div class="product-info">
+                    <h3>${product.name}</h3>
+                    <div class="product-price">$${product.price}</div>
+                    ${product.bestseller ? '<span class="product-badge">Bestseller</span>' : ''}
+                    ${product.newArrival ? '<span class="product-badge">New</span>' : ''}
+                    <div class="product-category">${product.category}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadProducts();
+
+        const categoryFilter = document.getElementById('category-filter');
+        categoryFilter.addEventListener('change', (e) => {
+            const category = e.target.value;
+            const filtered = category ? allProducts.filter(p => p.category === category) : allProducts;
+            displayProducts(filtered);
+        });
+    });
+</script>
+{% endblock %}
