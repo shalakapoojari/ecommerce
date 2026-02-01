@@ -185,8 +185,8 @@ main {
 .btn {
     display: inline-block;
     padding: 1rem 2.5rem;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 50px;
+    border: 1px solid rgba(232, 232, 227, 0.5);
+    border-radius: 3px;
     color: var(--primary-light);
     text-decoration: none;
     text-transform: uppercase;
@@ -196,11 +196,22 @@ main {
     cursor: pointer;
     background-color: transparent;
     font-family: inherit;
+    font-weight: 500;
 }
 
 .btn:hover {
     background-color: var(--primary-light);
     color: var(--primary-dark);
+    border-color: var(--primary-light);
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 @keyframes slideUp {
@@ -605,23 +616,67 @@ main {
 
 .form-group input, .form-group textarea {
     width: 100%;
-    padding: 0.75rem;
-    background-color: var(--hover-dark);
-    border: 1px solid var(--border-color);
+    padding: 0.875rem;
+    background-color: rgba(26, 26, 24, 0.8);
+    border: 1px solid rgba(232, 232, 227, 0.2);
     color: var(--primary-light);
     font-family: inherit;
-    transition: border-color 0.3s ease;
+    border-radius: 3px;
+    transition: all 0.3s ease;
 }
 
 .form-group input:focus, .form-group textarea:focus {
     outline: none;
-    border-color: var(--primary-light);
+    border-color: rgba(232, 232, 227, 0.5);
+    background-color: rgba(26, 26, 24, 1);
+    box-shadow: 0 0 0 3px rgba(232, 232, 227, 0.1);
+}
+
+.form-group input::placeholder {
+    color: rgba(232, 232, 227, 0.4);
+}
+
+.form-group input:invalid:not(:placeholder-shown),
+.form-group textarea:invalid:not(:placeholder-shown) {
+    border-color: rgba(239, 68, 68, 0.3);
 }
 
 .form-submit {
     width: 100%;
     padding: 1rem;
     margin-top: 1rem;
+}
+
+/* ==================== ALERTS & MESSAGES ==================== */
+.alert {
+    padding: 1rem;
+    border-radius: 3px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.alert-error {
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+.alert-success {
+    background-color: rgba(74, 222, 128, 0.1);
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    color: #86efac;
+}
+
+.alert-warning {
+    background-color: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    color: #fcd34d;
+}
+
+.alert-info {
+    background-color: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #93c5fd;
 }
 
 /* ==================== RESPONSIVE ==================== */

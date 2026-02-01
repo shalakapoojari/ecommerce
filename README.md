@@ -42,13 +42,26 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and set your `SECRET_KEY`:
+Edit `.env` and configure:
 
 ```
 SECRET_KEY=your-secret-key-here
 FLASK_ENV=development
 FLASK_DEBUG=True
+
+# Optional: Add Razorpay credentials for payment processing
+RAZORPAY_KEY_ID=your-razorpay-key-id
+RAZORPAY_KEY_SECRET=your-razorpay-key-secret
 ```
+
+#### Getting Razorpay Credentials
+
+1. Sign up at [Razorpay Dashboard](https://dashboard.razorpay.com)
+2. Go to Settings → API Keys
+3. Copy your Key ID and Key Secret
+4. Paste them in your `.env` file
+
+**Note**: Payments will work seamlessly once credentials are added. Without them, the app shows a message and can complete orders without payment processing.
 
 ### 3. Run the Application
 
@@ -67,14 +80,17 @@ The application will be available at `http://localhost:5000`
 - **Dynamic Content**: JavaScript loads products, cart, and user data from backend
 - **Client-side Cart**: Shopping cart persists across page navigation
 - **Session Management**: User authentication and account pages
+- **Razorpay Integration**: Secure payment gateway integration ready to use
 
 ### Backend (Flask)
 
 - **RESTful API**: Complete API for products, cart, orders, and admin functions
 - **Session-based Auth**: User authentication with password hashing
 - **Cart Management**: Server-side session-based cart system
-- **Order Processing**: Create and manage orders
-- **Admin Dashboard**: Manage products and orders
+- **Order Processing**: Create and manage orders with payment tracking
+- **Admin Dashboard**: Full CRUD operations for products and orders
+- **Product Management**: Admin can add, edit, and delete products with detailed attributes
+- **Payment Gateway**: Razorpay integration for secure payments
 
 ## Demo Credentials
 
@@ -110,8 +126,14 @@ The application will be available at `http://localhost:5000`
 - `GET /api/admin/orders` - Get all orders
 - `GET /api/admin/products` - Get all products
 - `POST /api/admin/products` - Add product
+- `GET /api/admin/products/<id>` - Get product details
 - `PUT /api/admin/products/<id>` - Update product
 - `DELETE /api/admin/products/<id>` - Delete product
+
+### Payment (Razorpay)
+- `GET /api/payment/razorpay-key` - Get Razorpay public key
+- `POST /api/payment/create-order` - Create Razorpay payment order
+- `POST /api/payment/verify` - Verify payment signature
 
 ## Styling
 
@@ -140,25 +162,95 @@ All styles are defined in `static/css/styles.css` with CSS variables for easy cu
 4. Backend API serves data to frontend via JSON endpoints
 5. Flask sessions manage user authentication and cart state
 
+## Admin Features
+
+### Product Management
+The admin dashboard (`/admin`) provides full product management:
+
+1. **View Products**: See all products in a table with details
+2. **Add Products**: Click "Add New Product" to add new items with:
+   - Name, category, price, description
+   - Multiple sizes and images
+   - Stock status flags (In Stock, Featured, Bestseller, New Arrival)
+3. **Edit Products**: Click "Edit" to modify any product
+4. **Delete Products**: Remove products from inventory
+
+### Order Management
+- View all customer orders
+- Track payment status
+- Monitor order details and shipping information
+
+### Access Control
+- Admin panel is only accessible to `admin@example.com`
+- All admin operations require authentication
+
 ## Features to Add
 
 - Database integration (SQLAlchemy with PostgreSQL/MySQL)
-- Payment processing (Stripe integration)
 - Email notifications
 - Product image uploads
 - Advanced filtering and search
 - User reviews and ratings
 - Wishlist functionality
 - Email verification
+- Inventory tracking
 
-## Security Notes
+## Payment Processing (Razorpay)
 
-- Change `SECRET_KEY` in production
-- Enable HTTPS in production
-- Implement CSRF protection for forms
-- Add rate limiting to API endpoints
-- Validate all user inputs on backend
-- Use environment variables for sensitive data
+### How It Works
+
+1. **Checkout Page**: Customer fills in shipping and payment details
+2. **Order Creation**: Backend creates a pending order
+3. **Razorpay Gateway**: Customer is redirected to Razorpay's secure checkout
+4. **Payment Verification**: Payment signature is verified server-side
+5. **Order Completion**: Order is marked as paid and customer sees confirmation
+
+### Integration Notes
+
+- Razorpay JavaScript is loaded from CDN (works without local installation)
+- Payment amount is converted from USD to INR (paise)
+- Signature verification ensures payment authenticity
+- Order details include Razorpay transaction IDs for tracking
+
+### Testing
+
+Use Razorpay's test credentials to test the payment flow:
+- Test cards are available in Razorpay documentation
+- All test transactions won't debit from actual accounts
+
+## Security Features
+
+### Implemented Security Measures
+- **Input Validation**: All user inputs validated and sanitized server-side
+- **XSS Protection**: HTML escaping for all user-generated content
+- **CORS Configuration**: Restricted to localhost for development
+- **Session Security**: Secure, HTTP-only cookies with same-site policy
+- **Security Headers**: 
+  - X-Content-Type-Options: nosniff
+  - X-Frame-Options: DENY
+  - X-XSS-Protection enabled
+  - Content-Security-Policy configured
+  - HSTS enabled
+- **Password Security**: Bcrypt hashing with proper salting
+- **Email Validation**: RFC-compliant email format checking
+- **Payment Verification**: Razorpay signature verification server-side
+- **Error Handling**: Safe error messages without exposing internal details
+- **Rate Limiting Ready**: Architecture supports middleware addition
+
+### Production Security Checklist
+- [ ] Change `SECRET_KEY` to a strong random value (min 32 characters)
+- [ ] Set `FLASK_ENV=production` and disable `FLASK_DEBUG`
+- [ ] Enable HTTPS/SSL (required for Razorpay and security)
+- [ ] Configure CORS with your production domain
+- [ ] Set secure Razorpay credentials in environment variables
+- [ ] Use production WSGI server (Gunicorn, uWSGI)
+- [ ] Implement rate limiting for API endpoints
+- [ ] Set up logging and monitoring for suspicious activity
+- [ ] Enable database backups and recovery procedures
+- [ ] Configure WAF (Web Application Firewall)
+- [ ] Implement IP whitelisting for admin endpoints
+- [ ] Set up SSL/TLS certificate renewal automation
+- [ ] Never commit `.env` files to version control
 
 ## Development
 

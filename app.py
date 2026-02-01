@@ -1,17 +1,77 @@
 from flask import Flask, render_template, request, jsonify, session
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import BadRequest
 from functools import wraps
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
+import razorpay
+from html import escape
 
 load_dotenv()
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-CORS(app)
+
+# ==================== SECURITY CONFIG ====================
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:5000", "http://127.0.0.1:5000"]}})
+
+# ==================== SECURITY HEADERS ====================
+@app.after_request
+def set_security_headers(response):
+    """Add security headers to all responses"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
+# ==================== SECURITY HELPERS ====================
+def sanitize_input(value):
+    """Sanitize user input to prevent XSS"""
+    if isinstance(value, str):
+        return escape(value.strip())
+    return value
+
+def validate_email(email):
+    """Validate email format"""
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_product_data(data):
+    """Validate product data"""
+    required_fields = ['name', 'price', 'category', 'description']
+    for field in required_fields:
+        if field not in data or not str(data[field]).strip():
+            return False, f"Missing required field: {field}"
+    
+    try:
+        price = float(data['price'])
+        if price < 0 or price > 999999:
+            return False, "Price must be between 0 and 999999"
+    except (ValueError, TypeError):
+        return False, "Invalid price format"
+    
+    return True, "Valid"
+
+# ==================== RAZORPAY CONFIG ====================
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
+
+if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
+    razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+else:
+    razorpay_client = None
 
 # ==================== MOCK DATA ====================
 products = [
@@ -141,39 +201,70 @@ def login_required(f):
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    
-    if email in mock_users and check_password_hash(mock_users[email], password):
-        session['user'] = email
-        return jsonify({"success": True, "user": email})
-    
-    return jsonify({"error": "Invalid credentials"}), 401
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '').strip()
+        
+        if not email or not password:
+            return jsonify({"error": "Email and password required"}), 400
+        
+        if not validate_email(email):
+            return jsonify({"error": "Invalid email format"}), 400
+        
+        if email in mock_users and check_password_hash(mock_users[email], password):
+            session['user'] = email
+            session.permanent = True
+            return jsonify({"success": True, "user": email}), 200
+        
+        return jsonify({"error": "Invalid credentials"}), 401
+    except Exception as e:
+        app.logger.error(f"Login error: {str(e)}")
+        return jsonify({"error": "Login failed"}), 500
 
 @app.route('/api/auth/signup', methods=['POST'])
 def signup():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    
-    if email in mock_users:
-        return jsonify({"error": "Email already registered"}), 400
-    
-    mock_users[email] = generate_password_hash(password)
-    session['user'] = email
-    return jsonify({"success": True, "user": email})
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        email = data.get('email', '').strip().lower()
+        password = data.get('password', '').strip()
+        
+        if not email or not password:
+            return jsonify({"error": "Email and password required"}), 400
+        
+        if not validate_email(email):
+            return jsonify({"error": "Invalid email format"}), 400
+        
+        if len(password) < 6:
+            return jsonify({"error": "Password must be at least 6 characters"}), 400
+        
+        if email in mock_users:
+            return jsonify({"error": "Email already registered"}), 400
+        
+        mock_users[email] = generate_password_hash(password)
+        session['user'] = email
+        session.permanent = True
+        return jsonify({"success": True, "user": email}), 201
+    except Exception as e:
+        app.logger.error(f"Signup error: {str(e)}")
+        return jsonify({"error": "Signup failed"}), 500
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
     session.pop('user', None)
-    return jsonify({"success": True})
+    return jsonify({"success": True}), 200
 
 @app.route('/api/auth/user', methods=['GET'])
 def get_user():
     if 'user' in session:
-        return jsonify({"user": session['user']})
-    return jsonify({"user": None})
+        return jsonify({"user": session['user']}), 200
+    return jsonify({"user": None}), 200
 
 # ==================== PRODUCTS ====================
 @app.route('/api/products', methods=['GET'])
@@ -261,6 +352,73 @@ def clear_cart():
     session.modified = True
     return jsonify({"success": True})
 
+# ==================== PAYMENT ====================
+@app.route('/api/payment/razorpay-key', methods=['GET'])
+def get_razorpay_key():
+    """Get Razorpay key status - only return key if configured"""
+    return jsonify({
+        "configured": bool(RAZORPAY_KEY_ID),
+        "key": RAZORPAY_KEY_ID if RAZORPAY_KEY_ID else None
+    })
+
+@app.route('/api/payment/create-order', methods=['POST'])
+@login_required
+def create_payment_order():
+    """Create Razorpay payment order"""
+    if not razorpay_client:
+        return jsonify({"error": "Payment gateway not configured"}), 503
+    
+    try:
+        data = request.get_json()
+        if not data or 'amount' not in data:
+            return jsonify({"error": "Missing amount"}), 400
+        
+        try:
+            amount = float(data['amount'])
+            if amount < 1 or amount > 999999:
+                return jsonify({"error": "Invalid amount"}), 400
+            amount_paise = int(amount * 100)
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid amount format"}), 400
+        
+        razorpay_order = razorpay_client.order.create({
+            'amount': amount_paise,
+            'currency': 'INR',
+            'payment_capture': 1
+        })
+        return jsonify(razorpay_order), 201
+    except Exception as e:
+        app.logger.error(f"Razorpay order creation error: {str(e)}")
+        return jsonify({"error": "Payment processing error"}), 500
+
+@app.route('/api/payment/verify', methods=['POST'])
+@login_required
+def verify_payment():
+    """Verify Razorpay payment signature"""
+    if not razorpay_client:
+        return jsonify({"error": "Payment gateway not configured"}), 503
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Missing payment data"}), 400
+        
+        required_fields = ['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature']
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": "Missing payment fields"}), 400
+        
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': data['razorpay_order_id'],
+            'razorpay_payment_id': data['razorpay_payment_id'],
+            'razorpay_signature': data['razorpay_signature']
+        })
+        return jsonify({"success": True}), 200
+    except razorpay.errors.SignatureVerificationError:
+        return jsonify({"error": "Invalid payment signature"}), 403
+    except Exception as e:
+        app.logger.error(f"Payment verification error: {str(e)}")
+        return jsonify({"error": "Verification failed"}), 500
+
 # ==================== ORDERS ====================
 @app.route('/api/orders', methods=['POST'])
 @login_required
@@ -272,7 +430,10 @@ def create_order():
         'customerEmail': session['user'],
         'date': datetime.now().isoformat(),
         'status': 'pending',
-        'paymentStatus': 'pending',
+        'paymentStatus': data.get('paymentStatus', 'pending'),
+        'paymentMethod': data.get('paymentMethod', 'razorpay'),
+        'razorpayOrderId': data.get('razorpayOrderId'),
+        'razorpayPaymentId': data.get('razorpayPaymentId'),
         'items': data.get('items', []),
         'total': data.get('total', 0),
         'shippingAddress': data.get('shippingAddress', {}),
@@ -280,7 +441,7 @@ def create_order():
     orders.append(order)
     session['cart'] = []
     session.modified = True
-    return jsonify(order)
+    return jsonify(order), 201
 
 @app.route('/api/orders', methods=['GET'])
 @login_required
@@ -307,36 +468,106 @@ def admin_get_orders():
 @app.route('/api/admin/products', methods=['GET', 'POST'])
 @login_required
 def admin_products():
-    if session['user'] != 'admin@example.com':
+    if session.get('user') != 'admin@example.com':
         return jsonify({"error": "Unauthorized"}), 403
     
     if request.method == 'POST':
-        product = request.get_json()
-        product['id'] = str(len(products) + 1)
-        products.append(product)
-        return jsonify(product)
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+            
+            is_valid, error_msg = validate_product_data(data)
+            if not is_valid:
+                return jsonify({"error": error_msg}), 400
+            
+            product = {
+                'id': str(len(products) + 1),
+                'name': sanitize_input(data['name']),
+                'description': sanitize_input(data['description']),
+                'category': sanitize_input(data['category']),
+                'price': float(data['price']),
+                'inStock': bool(data.get('inStock', True)),
+                'featured': bool(data.get('featured', False)),
+                'bestseller': bool(data.get('bestseller', False)),
+                'newArrival': bool(data.get('newArrival', False)),
+                'sizes': [sanitize_input(s) for s in data.get('sizes', [])],
+                'images': [sanitize_input(i) for i in data.get('images', [])],
+                'createdAt': datetime.now().isoformat()
+            }
+            products.append(product)
+            return jsonify(product), 201
+        except Exception as e:
+            app.logger.error(f"Product creation error: {str(e)}")
+            return jsonify({"error": "Failed to create product"}), 500
     
-    return jsonify(products)
+    return jsonify(products), 200
 
-@app.route('/api/admin/products/<product_id>', methods=['PUT', 'DELETE'])
+@app.route('/api/admin/products/<product_id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def admin_product(product_id):
-    if session['user'] != 'admin@example.com':
+    if session.get('user') != 'admin@example.com':
         return jsonify({"error": "Unauthorized"}), 403
     
-    if request.method == 'PUT':
-        data = request.get_json()
+    product_id = sanitize_input(product_id)
+    
+    if request.method == 'GET':
         product = next((p for p in products if p['id'] == product_id), None)
         if product:
-            product.update(data)
-            return jsonify(product)
+            return jsonify(product), 200
+        return jsonify({"error": "Product not found"}), 404
+    
+    elif request.method == 'PUT':
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+            
+            product = next((p for p in products if p['id'] == product_id), None)
+            if not product:
+                return jsonify({"error": "Product not found"}), 404
+            
+            if 'name' in data:
+                product['name'] = sanitize_input(data['name'])
+            if 'description' in data:
+                product['description'] = sanitize_input(data['description'])
+            if 'category' in data:
+                product['category'] = sanitize_input(data['category'])
+            if 'price' in data:
+                try:
+                    price = float(data['price'])
+                    if price < 0 or price > 999999:
+                        return jsonify({"error": "Invalid price"}), 400
+                    product['price'] = price
+                except (ValueError, TypeError):
+                    return jsonify({"error": "Invalid price format"}), 400
+            if 'inStock' in data:
+                product['inStock'] = bool(data['inStock'])
+            if 'featured' in data:
+                product['featured'] = bool(data['featured'])
+            if 'bestseller' in data:
+                product['bestseller'] = bool(data['bestseller'])
+            if 'newArrival' in data:
+                product['newArrival'] = bool(data['newArrival'])
+            if 'sizes' in data:
+                product['sizes'] = [sanitize_input(s) for s in data.get('sizes', [])]
+            if 'images' in data:
+                product['images'] = [sanitize_input(i) for i in data.get('images', [])]
+            
+            product['updatedAt'] = datetime.now().isoformat()
+            return jsonify(product), 200
+        except Exception as e:
+            app.logger.error(f"Product update error: {str(e)}")
+            return jsonify({"error": "Failed to update product"}), 500
     
     elif request.method == 'DELETE':
         global products
+        if not any(p['id'] == product_id for p in products):
+            return jsonify({"error": "Product not found"}), 404
         products = [p for p in products if p['id'] != product_id]
-        return jsonify({"success": True})
+        return jsonify({"success": True}), 200
     
-    return jsonify({"error": "Not found"}), 404
+    return jsonify({"error": "Method not allowed"}), 405
 
 # ==================== PAGES ====================
 @app.route('/')
@@ -374,6 +605,32 @@ def account():
 @app.route('/admin')
 def admin():
     return render_template('admin.html')
+
+# ==================== ERROR HANDLERS ====================
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Resource not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.error(f"Internal server error: {str(error)}")
+    return jsonify({"error": "Internal server error"}), 500
+
+@app.errorhandler(403)
+def forbidden(error):
+    return jsonify({"error": "Access forbidden"}), 403
+
+@app.errorhandler(400)
+def bad_request(error):
+    return jsonify({"error": "Bad request"}), 400
+
+# ==================== HEALTH CHECK ====================
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        "status": "healthy",
+        "payment_configured": bool(RAZORPAY_KEY_ID)
+    }), 200
 
 if __name__ == '__main__':
     app.run(debug=True)
