@@ -6,12 +6,22 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 import os
+import razorpay
 
 load_dotenv()
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 CORS(app)
+
+# ==================== RAZORPAY CONFIG ====================
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
+
+if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
+    razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+else:
+    razorpay_client = None
 
 # ==================== MOCK DATA ====================
 products = [
@@ -261,6 +271,47 @@ def clear_cart():
     session.modified = True
     return jsonify({"success": True})
 
+# ==================== PAYMENT ====================
+@app.route('/api/payment/razorpay-key', methods=['GET'])
+def get_razorpay_key():
+    if not RAZORPAY_KEY_ID:
+        return jsonify({"error": "Razorpay not configured"}), 400
+    return jsonify({"key": RAZORPAY_KEY_ID})
+
+@app.route('/api/payment/create-order', methods=['POST'])
+@login_required
+def create_payment_order():
+    if not razorpay_client:
+        return jsonify({"error": "Payment gateway not configured"}), 400
+    
+    data = request.get_json()
+    amount = int(data.get('amount', 0) * 100)  # Convert to paise
+    
+    try:
+        razorpay_order = razorpay_client.order.create({
+            'amount': amount,
+            'currency': 'INR',
+            'payment_capture': 1
+        })
+        return jsonify(razorpay_order)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/api/payment/verify', methods=['POST'])
+@login_required
+def verify_payment():
+    data = request.get_json()
+    
+    try:
+        razorpay_client.utility.verify_payment_signature({
+            'razorpay_order_id': data.get('razorpay_order_id'),
+            'razorpay_payment_id': data.get('razorpay_payment_id'),
+            'razorpay_signature': data.get('razorpay_signature')
+        })
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
 # ==================== ORDERS ====================
 @app.route('/api/orders', methods=['POST'])
 @login_required
@@ -272,7 +323,10 @@ def create_order():
         'customerEmail': session['user'],
         'date': datetime.now().isoformat(),
         'status': 'pending',
-        'paymentStatus': 'pending',
+        'paymentStatus': data.get('paymentStatus', 'pending'),
+        'paymentMethod': data.get('paymentMethod', 'razorpay'),
+        'razorpayOrderId': data.get('razorpayOrderId'),
+        'razorpayPaymentId': data.get('razorpayPaymentId'),
         'items': data.get('items', []),
         'total': data.get('total', 0),
         'shippingAddress': data.get('shippingAddress', {}),
@@ -280,7 +334,7 @@ def create_order():
     orders.append(order)
     session['cart'] = []
     session.modified = True
-    return jsonify(order)
+    return jsonify(order), 201
 
 @app.route('/api/orders', methods=['GET'])
 @login_required
@@ -313,23 +367,36 @@ def admin_products():
     if request.method == 'POST':
         product = request.get_json()
         product['id'] = str(len(products) + 1)
+        product['inStock'] = product.get('inStock', True)
+        product['featured'] = product.get('featured', False)
+        product['bestseller'] = product.get('bestseller', False)
+        product['newArrival'] = product.get('newArrival', False)
+        product['sizes'] = product.get('sizes', [])
+        product['images'] = product.get('images', [])
         products.append(product)
-        return jsonify(product)
+        return jsonify(product), 201
     
     return jsonify(products)
 
-@app.route('/api/admin/products/<product_id>', methods=['PUT', 'DELETE'])
+@app.route('/api/admin/products/<product_id>', methods=['GET', 'PUT', 'DELETE'])
 @login_required
 def admin_product(product_id):
     if session['user'] != 'admin@example.com':
         return jsonify({"error": "Unauthorized"}), 403
     
-    if request.method == 'PUT':
+    if request.method == 'GET':
+        product = next((p for p in products if p['id'] == product_id), None)
+        if product:
+            return jsonify(product)
+        return jsonify({"error": "Product not found"}), 404
+    
+    elif request.method == 'PUT':
         data = request.get_json()
         product = next((p for p in products if p['id'] == product_id), None)
         if product:
             product.update(data)
             return jsonify(product)
+        return jsonify({"error": "Product not found"}), 404
     
     elif request.method == 'DELETE':
         global products

@@ -28,10 +28,67 @@
                 <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Products</h2>
                 <button onclick="toggleProductForm()" class="btn" style="margin-bottom: 1rem;">Add New Product</button>
 
-                <div id="product-form" style="display: none; border: 1px solid var(--border-color); padding: 1.5rem; margin-bottom: 2rem;">
-                    <h3 style="margin-bottom: 1rem;">Add Product</h3>
-                    <!-- Product form fields would go here -->
-                    <p style="color: var(--accent-gray);">Product management feature coming soon</p>
+                <div id="product-form" style="display: none; border: 1px solid var(--border-color); padding: 1.5rem; margin-bottom: 2rem; background: var(--background-secondary);">
+                    <h3 style="margin-bottom: 1.5rem;">Add/Edit Product</h3>
+                    <form id="product-form-element" onsubmit="handleProductSubmit(event)">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                            <div class="form-group">
+                                <label for="product-name">Product Name</label>
+                                <input type="text" id="product-name" name="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="product-category">Category</label>
+                                <input type="text" id="product-category" name="category" required>
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                            <div class="form-group">
+                                <label for="product-price">Price ($)</label>
+                                <input type="number" id="product-price" name="price" step="0.01" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="product-description">Description</label>
+                                <input type="text" id="product-description" name="description" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label for="product-sizes">Sizes (comma-separated)</label>
+                            <input type="text" id="product-sizes" name="sizes" placeholder="XS, S, M, L, XL" required>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1rem;">
+                            <label for="product-images">Image URLs (comma-separated)</label>
+                            <input type="text" id="product-images" name="images" placeholder="image1.jpg, image2.jpg">
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="product-inStock" name="inStock" checked>
+                                <span style="margin-left: 0.5rem;">In Stock</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="product-featured" name="featured">
+                                <span style="margin-left: 0.5rem;">Featured</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="product-bestseller" name="bestseller">
+                                <span style="margin-left: 0.5rem;">Bestseller</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" id="product-newArrival" name="newArrival">
+                                <span style="margin-left: 0.5rem;">New Arrival</span>
+                            </label>
+                        </div>
+
+                        <input type="hidden" id="product-id" name="id">
+
+                        <div style="display: flex; gap: 1rem;">
+                            <button type="submit" class="btn">Save Product</button>
+                            <button type="button" class="btn" style="background: var(--accent-gray);" onclick="resetProductForm()">Cancel</button>
+                        </div>
+                    </form>
                 </div>
 
                 <div id="products-list">
@@ -102,11 +159,12 @@
 
             const list = document.getElementById('products-list');
             list.innerHTML = '<table style="width: 100%; border-collapse: collapse;">' +
-                '<thead><tr style="border-bottom: 1px solid var(--border-color);">' +
+                '<thead><tr style="border-bottom: 2px solid var(--border-color);">' +
                 '<th style="text-align: left; padding: 0.75rem;">Product</th>' +
                 '<th style="text-align: left; padding: 0.75rem;">Category</th>' +
                 '<th style="text-align: left; padding: 0.75rem;">Price</th>' +
                 '<th style="text-align: left; padding: 0.75rem;">Stock</th>' +
+                '<th style="text-align: left; padding: 0.75rem;">Featured</th>' +
                 '<th style="text-align: left; padding: 0.75rem;">Actions</th>' +
                 '</tr></thead>' +
                 '<tbody>' +
@@ -115,7 +173,8 @@
                         <td style="padding: 0.75rem;">${product.name}</td>
                         <td style="padding: 0.75rem;">${product.category}</td>
                         <td style="padding: 0.75rem;">$${product.price}</td>
-                        <td style="padding: 0.75rem;">${product.inStock ? 'In Stock' : 'Out of Stock'}</td>
+                        <td style="padding: 0.75rem;">${product.inStock ? '✓ In Stock' : '✗ Out'}</td>
+                        <td style="padding: 0.75rem;">${product.featured ? '✓ Yes' : '✗ No'}</td>
                         <td style="padding: 0.75rem;">
                             <button onclick="editProduct('${product.id}')" style="background: none; border: none; color: var(--primary-light); cursor: pointer; text-decoration: underline; margin-right: 1rem;">Edit</button>
                             <button onclick="deleteProduct('${product.id}')" style="background: none; border: none; color: #ff6b6b; cursor: pointer; text-decoration: underline;">Delete</button>
@@ -150,20 +209,100 @@
     function toggleProductForm() {
         const form = document.getElementById('product-form');
         form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        if (form.style.display === 'block') {
+            resetProductForm();
+        }
     }
 
-    function editProduct(productId) {
-        console.log("[v0] Edit product:", productId);
+    async function editProduct(productId) {
+        try {
+            const res = await fetch(`/api/admin/products/${productId}`);
+            const product = await res.json();
+            
+            document.getElementById('product-id').value = product.id;
+            document.getElementById('product-name').value = product.name;
+            document.getElementById('product-category').value = product.category;
+            document.getElementById('product-price').value = product.price;
+            document.getElementById('product-description').value = product.description;
+            document.getElementById('product-sizes').value = product.sizes.join(', ');
+            document.getElementById('product-images').value = product.images.join(', ');
+            document.getElementById('product-inStock').checked = product.inStock;
+            document.getElementById('product-featured').checked = product.featured;
+            document.getElementById('product-bestseller').checked = product.bestseller;
+            document.getElementById('product-newArrival').checked = product.newArrival;
+            
+            document.getElementById('product-form').style.display = 'block';
+        } catch (error) {
+            console.log("[v0] Error loading product:", error);
+        }
+    }
+
+    function resetProductForm() {
+        document.getElementById('product-form-element').reset();
+        document.getElementById('product-id').value = '';
+        document.getElementById('product-form').style.display = 'none';
+    }
+
+    async function handleProductSubmit(event) {
+        event.preventDefault();
+
+        const productId = document.getElementById('product-id').value;
+        const formData = new FormData(document.getElementById('product-form-element'));
+        
+        const product = {
+            name: formData.get('name'),
+            category: formData.get('category'),
+            price: parseFloat(formData.get('price')),
+            description: formData.get('description'),
+            sizes: formData.get('sizes').split(',').map(s => s.trim()),
+            images: formData.get('images').split(',').map(i => i.trim()),
+            inStock: document.getElementById('product-inStock').checked,
+            featured: document.getElementById('product-featured').checked,
+            bestseller: document.getElementById('product-bestseller').checked,
+            newArrival: document.getElementById('product-newArrival').checked,
+        };
+
+        try {
+            let res;
+            if (productId) {
+                res = await fetch(`/api/admin/products/${productId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(product)
+                });
+            } else {
+                res = await fetch('/api/admin/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(product)
+                });
+            }
+
+            if (res.ok) {
+                resetProductForm();
+                loadProducts();
+                alert(productId ? 'Product updated successfully' : 'Product added successfully');
+            } else {
+                alert('Error saving product');
+            }
+        } catch (error) {
+            console.log("[v0] Error saving product:", error);
+            alert('Error saving product');
+        }
     }
 
     async function deleteProduct(productId) {
         if (!confirm('Are you sure you want to delete this product?')) return;
 
         try {
-            await fetch(`/api/admin/products/${productId}`, { method: 'DELETE' });
-            loadProducts();
+            const res = await fetch(`/api/admin/products/${productId}`, { method: 'DELETE' });
+            if (res.ok) {
+                loadProducts();
+                alert('Product deleted successfully');
+            }
         } catch (error) {
             console.log("[v0] Error deleting product:", error);
+            alert('Error deleting product');
         }
     }
 

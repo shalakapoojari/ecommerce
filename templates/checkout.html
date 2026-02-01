@@ -48,31 +48,19 @@
                         </div>
                     </div>
 
-                    <h2 style="font-size: 1.2rem; margin: 2rem 0 1.5rem;">Payment Information</h2>
+                    <h2 style="font-size: 1.2rem; margin: 2rem 0 1.5rem;">Payment Method</h2>
 
-                    <div class="form-group">
-                        <label for="card-name">Cardholder Name</label>
-                        <input type="text" id="card-name" name="card-name" required>
+                    <div id="payment-method-info" style="background: #f5f5f5; padding: 1rem; border-radius: 4px; margin-bottom: 1.5rem;">
+                        <p style="font-size: 0.95rem; color: var(--accent-gray);">Payment powered by Razorpay</p>
+                        <p style="font-size: 0.85rem; color: var(--accent-gray); margin-top: 0.5rem;">Click "Complete Purchase" to proceed to secure payment gateway</p>
                     </div>
 
-                    <div class="form-group">
-                        <label for="card-number">Card Number</label>
-                        <input type="text" id="card-number" name="card-number" placeholder="1234 5678 9012 3456" required>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
-                        <div class="form-group">
-                            <label for="expiry">Expiry (MM/YY)</label>
-                            <input type="text" id="expiry" name="expiry" placeholder="12/25" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="cvc">CVC</label>
-                            <input type="text" id="cvc" name="cvc" placeholder="123" required>
-                        </div>
-                    </div>
+                    <input type="hidden" id="razorpay-order-id">
+                    <input type="hidden" id="razorpay-payment-id">
+                    <input type="hidden" id="razorpay-signature">
 
                     <button type="submit" class="btn" style="width: 100%; padding: 1rem; margin-top: 2rem; font-weight: 600;">
-                        Complete Purchase
+                        Complete Purchase with Razorpay
                     </button>
                 </form>
             </div>
@@ -137,6 +125,20 @@
         document.getElementById('total').textContent = `$${total.toFixed(2)}`;
     }
 
+    let razorpayKey = null;
+
+    async function getRazorpayKey() {
+        try {
+            const res = await fetch('/api/payment/razorpay-key');
+            if (res.ok) {
+                const data = await res.json();
+                razorpayKey = data.key;
+            }
+        } catch (error) {
+            console.log("[v0] Razorpay key not available:", error);
+        }
+    }
+
     async function handleCheckout(event) {
         event.preventDefault();
 
@@ -145,42 +147,128 @@
             return;
         }
 
-        const order = {
-            items: CartModule.items,
-            total: CartModule.getTotal() + 15,
-            shippingAddress: {
-                name: document.getElementById('name').value,
-                street: document.getElementById('street').value,
-                city: document.getElementById('city').value,
-                state: document.getElementById('state').value,
-                zip: document.getElementById('zip').value,
-                country: document.getElementById('country').value,
-            }
+        const total = CartModule.getTotal() + 15;
+        const shippingAddress = {
+            name: document.getElementById('name').value,
+            street: document.getElementById('street').value,
+            city: document.getElementById('city').value,
+            state: document.getElementById('state').value,
+            zip: document.getElementById('zip').value,
+            country: document.getElementById('country').value,
         };
 
         try {
-            const res = await fetch('/api/orders', {
+            // Create order on backend
+            const orderRes = await fetch('/api/orders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(order)
+                body: JSON.stringify({
+                    items: CartModule.items,
+                    total: total,
+                    shippingAddress: shippingAddress,
+                    paymentStatus: 'pending',
+                    paymentMethod: 'razorpay'
+                })
             });
 
-            if (res.status === 401) {
+            if (orderRes.status === 401) {
                 alert('Please login to complete your purchase');
                 window.location.href = '/login';
                 return;
             }
 
-            const data = await res.json();
-            await CartModule.clearCart();
-            window.location.href = `/checkout/confirmation?order=${data.id}`;
+            const orderData = await orderRes.json();
+
+            // If Razorpay is not configured, skip payment and complete order
+            if (!razorpayKey) {
+                console.log("[v0] Razorpay not configured, completing order without payment");
+                await CartModule.clearCart();
+                window.location.href = `/checkout/confirmation?order=${orderData.id}`;
+                return;
+            }
+
+            // Create Razorpay order
+            const paymentOrderRes = await fetch('/api/payment/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: total })
+            });
+
+            if (!paymentOrderRes.ok) {
+                throw new Error('Failed to create payment order');
+            }
+
+            const paymentOrder = await paymentOrderRes.json();
+
+            // Prepare Razorpay options
+            const options = {
+                key: razorpayKey,
+                amount: total * 100,
+                currency: 'INR',
+                order_id: paymentOrder.id,
+                name: 'U.S ATELIER',
+                description: 'Premium Clothing Purchase',
+                prefill: {
+                    name: shippingAddress.name,
+                    email: document.getElementById('email').value,
+                },
+                handler: async function (response) {
+                    console.log("[v0] Payment successful:", response);
+                    
+                    try {
+                        // Verify payment signature
+                        const verifyRes = await fetch('/api/payment/verify', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                razorpay_order_id: response.razorpay_order_id,
+                                razorpay_payment_id: response.razorpay_payment_id,
+                                razorpay_signature: response.razorpay_signature
+                            })
+                        });
+
+                        if (verifyRes.ok) {
+                            // Update order with payment details
+                            const updateRes = await fetch(`/api/orders`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    items: CartModule.items,
+                                    total: total,
+                                    shippingAddress: shippingAddress,
+                                    paymentStatus: 'completed',
+                                    paymentMethod: 'razorpay',
+                                    razorpayOrderId: response.razorpay_order_id,
+                                    razorpayPaymentId: response.razorpay_payment_id
+                                })
+                            });
+
+                            const finalOrder = await updateRes.json();
+                            await CartModule.clearCart();
+                            window.location.href = `/checkout/confirmation?order=${finalOrder.id}`;
+                        }
+                    } catch (error) {
+                        console.log("[v0] Payment verification error:", error);
+                        alert('Payment verification failed. Please contact support.');
+                    }
+                },
+                theme: {
+                    color: '#000000'
+                }
+            };
+
+            // Open Razorpay checkout
+            const razorpay = new Razorpay(options);
+            razorpay.open();
+
         } catch (error) {
-            console.log("[v0] Error creating order:", error);
-            alert('Error processing order');
+            console.log("[v0] Error during checkout:", error);
+            alert('Error processing order: ' + error.message);
         }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        getRazorpayKey();
         CartModule.loadCart().then(() => {
             loadCheckoutSummary();
         });
