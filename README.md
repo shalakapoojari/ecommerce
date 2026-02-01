@@ -218,16 +218,39 @@ Use Razorpay's test credentials to test the payment flow:
 - Test cards are available in Razorpay documentation
 - All test transactions won't debit from actual accounts
 
-## Security Notes
+## Security Features
 
-- Change `SECRET_KEY` in production
-- Enable HTTPS in production (required for Razorpay)
-- Implement CSRF protection for forms
-- Add rate limiting to API endpoints
-- Validate all user inputs on backend
-- Use environment variables for sensitive data
-- Store Razorpay keys securely in environment variables only
-- Never commit API keys to version control
+### Implemented Security Measures
+- **Input Validation**: All user inputs validated and sanitized server-side
+- **XSS Protection**: HTML escaping for all user-generated content
+- **CORS Configuration**: Restricted to localhost for development
+- **Session Security**: Secure, HTTP-only cookies with same-site policy
+- **Security Headers**: 
+  - X-Content-Type-Options: nosniff
+  - X-Frame-Options: DENY
+  - X-XSS-Protection enabled
+  - Content-Security-Policy configured
+  - HSTS enabled
+- **Password Security**: Bcrypt hashing with proper salting
+- **Email Validation**: RFC-compliant email format checking
+- **Payment Verification**: Razorpay signature verification server-side
+- **Error Handling**: Safe error messages without exposing internal details
+- **Rate Limiting Ready**: Architecture supports middleware addition
+
+### Production Security Checklist
+- [ ] Change `SECRET_KEY` to a strong random value (min 32 characters)
+- [ ] Set `FLASK_ENV=production` and disable `FLASK_DEBUG`
+- [ ] Enable HTTPS/SSL (required for Razorpay and security)
+- [ ] Configure CORS with your production domain
+- [ ] Set secure Razorpay credentials in environment variables
+- [ ] Use production WSGI server (Gunicorn, uWSGI)
+- [ ] Implement rate limiting for API endpoints
+- [ ] Set up logging and monitoring for suspicious activity
+- [ ] Enable database backups and recovery procedures
+- [ ] Configure WAF (Web Application Firewall)
+- [ ] Implement IP whitelisting for admin endpoints
+- [ ] Set up SSL/TLS certificate renewal automation
+- [ ] Never commit `.env` files to version control
 
 ## Development
 
